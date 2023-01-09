@@ -32,7 +32,10 @@ from conda_lock.conda_solver import (
 from conda_lock.conda_solver import solve_specs_for_arch
 from conda_lock.src_parser import LockSpecification
 from conda_lock.src_parser.environment_yaml import parse_environment_file
-from conda_lock.virtual_package import default_virtual_package_repodata
+from conda_lock.virtual_package import (
+        default_virtual_package_repodata,
+        virtual_package_repo_from_specification
+        )
 
 from conda_vendor.version import __version__
 
@@ -210,7 +213,10 @@ def _remove_channel(solution: DryRunInstall, channel: str):
 
 
 def solve_environment(
-    environment_file: Path, solver: str, platform: str
+    environment_file: Path,
+    solver: str,
+    platform: str,
+    virtual_package_spec: Path = None
 ) -> List[FetchAction]:
     """Solve the environment specified in the conda environment_yaml,
     and return a list of all the required packages with enough metadata
@@ -233,6 +239,8 @@ def solve_environment(
 
     """
     assert isinstance(environment_file, Path)
+    if virtual_package_spec is not None:
+        assert isinstance(virtual_package_spec, Path)
 
     # generate conda-lock's LockSpecification
     lock_spec = _parse_environment_file(environment_file, platform)
@@ -241,9 +249,18 @@ def solve_environment(
     _cyan(f"Using Solver: {solver}", bold=False)
     _cyan(f"Solving for Platform: {platform}", bold=False)
     _cyan(f"Solving for Spec: {specs}", bold=False)
+    if virtual_package_spec is None:
+        _cyan("Virtual Packages: conda-lock default", bold=False)
+    else:
+        _cyan(f"Virtual Packages: {virtual_package_spec}", bold=False)
+
+    #decide on virtual-packages
+    if virtual_package_spec is not None:
+        virtual_package_repodata = virtual_package_repo_from_specification(virtual_package_spec)
+    else:
+        virtual_package_repodata = default_virtual_package_repodata()
 
     # let conda-lock solve for the environment
-    virtual_package_repodata = default_virtual_package_repodata()
     virtual_package_chan = virtual_package_repodata.channel
     channels = [*lock_spec.channels, virtual_package_chan]
     solution = solve_specs_for_arch(solver, channels, specs, platform)
@@ -542,6 +559,11 @@ def _get_conda_platform(platform=None) -> str:
     help="Platform to solve for.",
 )
 @click.option(
+    "--virtual-package-spec",
+    default=None,
+    help="specify virtual packages injected into conda-lock solution",
+)
+@click.option(
     "--dry-run",
     default=False,
     is_flag=True,
@@ -554,7 +576,12 @@ def _get_conda_platform(platform=None) -> str:
     help="Save IronBank Resources 'ib_manifest.yaml' in current directory",
 )
 def vendor(
-    file: str, solver: str, platform: str, dry_run: bool, ironbank_gen: bool
+    file: str,
+    solver: str,
+    platform: str,
+    virtual_package_spec: str,
+    dry_run: bool,
+    ironbank_gen: bool,
 ):
     """Main entry point to vendor a file.  This will (in the general case)
     use conda-lock to solve the environment specified in an environment_yaml
@@ -573,6 +600,14 @@ def vendor(
 
     platform: str
         platform to vendor, e.g. linux-32, linux-64, osx-64, win-32
+
+    virtual_package_spec: str
+        location of virtual-packages.yml to be used by conda-lock.  The format
+        of the virtual-packages.yml is specified in the conda-lock
+        documentation.
+        Note: if a file named virutal-packages.yml exist in the directory
+        where conda-lock is run it will use that file.
+        see (https://github.com/conda-incubator/conda-lock).
 
     dry_run: bool
         if specified just try to solve the environment and dump the solution
@@ -606,7 +641,11 @@ def vendor(
 
     vendored_dir_path = create_vendored_dir(environment_name, platform)
 
-    package_list = solve_environment(environment_yaml, solver, platform)
+    if virtual_package_spec is not None:
+        virtual_package_spec = Path(virtual_package_spec)
+
+    package_list = solve_environment(environment_yaml, solver, platform,
+                                     virtual_package_spec)
     hotfix_vendored_repodata_json(package_list, vendored_dir_path)
 
     download_packages(package_list, vendored_dir_path, platform)
@@ -663,8 +702,61 @@ def ironbank_gen(file: str, solver: str, platform: str):
     yaml_dump_ironbank_manifest(package_list)
 
 
+###########################################################################
+#                                                                         #
+#              conda-vendor virtual-packages                              #
+#                                                                         #
+###########################################################################
+@click.command(
+        "virtual-packages",
+        help="dump host virtual packages")
+@click.option(
+        "--solver",
+        default="conda",
+        help="Sover to use. conda, mamba, micromamba"
+        )
+@click.option(
+        "-o", "--output",
+        default=None,
+        help="name of file to write.  Default is stdout."
+        )
+def virtual_packages(solver, output):
+    from subprocess import check_output
+    from shlex import split
+
+    conda_info = check_output(split(f"{solver} info --json"), text=True)
+    _json = json.loads(conda_info)
+
+    packages = _json.get("virtual_pkgs", [])
+    if len(packages) == 0:
+        _red("Unable to find virtual packages")
+        sys.exit(1)
+
+    package_list = {}
+    for pkg in packages:
+        package_list[pkg[0]] = pkg[1]
+
+    virtual_packages_dict = {
+            'subdirs': {
+                        f"{_get_conda_platform()}" : {
+                            "packages": package_list
+                            }
+                        }
+            }
+
+    if output:
+        with open(output, 'w') as f:
+            yaml.dump(virtual_packages_dict, f, indent=4)
+    else:
+        yaml.dump(virtual_packages_dict, sys.stdout, indent=4)
+
+
+
+
+
 main.add_command(vendor)
 main.add_command(ironbank_gen)
+main.add_command(virtual_packages)
 
 if __name__ == "main":
     main()
