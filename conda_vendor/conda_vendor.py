@@ -13,12 +13,14 @@ import struct
 import sys
 import yaml
 
+from packaging import version
 from pathlib import Path
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 from ruamel.yaml import YAML
 from typing import List
 
+from conda_lock import __version__ as conda_lock_version
 from conda_lock.conda_solver import (
     DryRunInstall,
     VersionedDependency,
@@ -27,7 +29,6 @@ from conda_lock.conda_solver import (
 from conda_lock.conda_solver import (
     _reconstruct_fetch_actions as reconstruct_fetch_actions,
 )
-from conda_lock.conda_solver import solve_conda
 from conda_lock.conda_solver import solve_specs_for_arch
 from conda_lock.src_parser import LockSpecification
 from conda_lock.src_parser.environment_yaml import parse_environment_file
@@ -97,6 +98,14 @@ def _red(s, bold=True):
 
 def _yellow(s, bold=True):
     click.echo(click.style(s, fg="yellow", bg="black", bold=bold))
+
+
+def _parse_environment_file(environment_file: Path, platform: str):
+    # the function parameters changed in conda-lock 1.3.0
+    if version.parse(conda_lock_version) < version.parse("1.3.0"):
+        return parse_environment_file(environment_file)
+    else:
+        return parse_environment_file(environment_file, [platform])
 
 
 def create_vendored_dir(
@@ -226,7 +235,7 @@ def solve_environment(
     assert isinstance(environment_file, Path)
 
     # generate conda-lock's LockSpecification
-    lock_spec = parse_environment_file(environment_file)
+    lock_spec = _parse_environment_file(environment_file, platform)
     specs = _get_query_list(lock_spec)
 
     _cyan(f"Using Solver: {solver}", bold=False)
@@ -585,9 +594,9 @@ def vendor(
     environment_yaml = Path(file)
 
     # find the name of the environment from the environmant.yaml
-    with open(environment_yaml, "r") as env_file:
+    with open(environment_yaml, "r") as environment_file:
         try:
-            _yaml = yaml.safe_load(env_file)
+            _yaml = yaml.safe_load(environment_file)
             environment_name = _yaml["name"]
         except yaml.YAMLError as err:
             click.echo(err)

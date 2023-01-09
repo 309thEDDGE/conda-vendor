@@ -78,10 +78,14 @@ def test_vendor_full_runthrough(
 def test_get_lock_spec_for_environment_file(
     python_conda_mirror_main_conda_forge_environment,
 ):
-    from conda_lock.src_parser.environment_yaml import parse_environment_file
+    from conda_vendor.conda_vendor import (
+        _parse_environment_file,
+        _get_conda_platform,
+    )
 
-    lock_spec = parse_environment_file(
-        python_conda_mirror_main_conda_forge_environment
+    lock_spec = _parse_environment_file(
+        python_conda_mirror_main_conda_forge_environment,
+        _get_conda_platform(),
     )
     assert any(
         versioned_dep.name == "python"
