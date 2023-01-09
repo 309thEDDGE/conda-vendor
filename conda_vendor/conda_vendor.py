@@ -377,7 +377,7 @@ def hotfix_vendored_repodata_json(
 
     # patch repodata.json for each channel + subdir
 
-    # this monstrosity just call reconstruct_repodata for each subdir like
+    # this monstrosity just calls reconstruct_repodata for each subdir like
     # "noarch" , "osx-64", "linux-64", with each channel like
     # https://conda-forge/blah/osx-64 or
     #  file:///usr/share/blah/local-channel/osx-64 we decide if they mach if
@@ -556,7 +556,7 @@ def _get_conda_platform(platform=None) -> str:
 def vendor(
     file: str, solver: str, platform: str, dry_run: bool, ironbank_gen: bool
 ):
-    """Main etry point to vendor a file.  This will (in the general case)
+    """Main entry point to vendor a file.  This will (in the general case)
     use conda-lock to solve the environment specified in an environment_yaml
     passed in through file parameter. After a valid solution, it will
     download the corresponding Conda packages to a channel in
