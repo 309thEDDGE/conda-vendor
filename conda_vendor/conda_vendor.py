@@ -256,7 +256,7 @@ def solve_environment(
 
     # unfortunately Conda sometimes doesn't fill out the FETCH actions
     # completely so conda-lock will generate the appropriate FETCH action from
-    # the LINK action and the repodata.json
+    # the LINK action and the repodata_record.json
     patched_solution = reconstruct_fetch_actions(solver, platform, solution)
     return patched_solution["actions"]["FETCH"]
 
