@@ -1,19 +1,6 @@
-from requests.adapters import urldefragauth
-from conda_vendor.conda_vendor import (
-    _get_conda_platform,
-    _reconstruct_repodata_json,
-)
-import pytest
-from requests import Response
-import hashlib
-import json
-from ruamel.yaml import YAML
-from requests import Response
-from unittest import TestCase
-from unittest.mock import Mock, patch, call, mock_open
-from yaml import safe_load
-from yaml.loader import SafeLoader
-import os
+from unittest.mock import patch
+
+from conda_vendor.conda_vendor import _get_conda_platform
 
 
 @patch("sys.platform", "linux")

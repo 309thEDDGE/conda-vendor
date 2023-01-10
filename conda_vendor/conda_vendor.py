@@ -18,7 +18,7 @@ from pathlib import Path
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 from ruamel.yaml import YAML
-from typing import List
+from typing import List, Union
 
 from conda_lock import __version__ as conda_lock_version
 from conda_lock.conda_solver import (
@@ -33,9 +33,10 @@ from conda_lock.conda_solver import solve_specs_for_arch
 from conda_lock.src_parser import LockSpecification
 from conda_lock.src_parser.environment_yaml import parse_environment_file
 from conda_lock.virtual_package import (
-        default_virtual_package_repodata,
-        virtual_package_repo_from_specification
-        )
+    FakeRepoData,
+    default_virtual_package_repodata,
+    virtual_package_repo_from_specification,
+)
 
 from conda_vendor.version import __version__
 
@@ -103,7 +104,9 @@ def _yellow(s, bold=True):
     click.echo(click.style(s, fg="yellow", bg="black", bold=bold))
 
 
-def _parse_environment_file(environment_file: Path, platform: str):
+def _generate_lock_spec(
+    environment_file: Path, platform: str
+) -> LockSpecification:
     # the function parameters changed in conda-lock 1.3.0
     if version.parse(conda_lock_version) < version.parse("1.3.0"):
         return parse_environment_file(environment_file)
@@ -111,50 +114,30 @@ def _parse_environment_file(environment_file: Path, platform: str):
         return parse_environment_file(environment_file, [platform])
 
 
-def create_vendored_dir(
-    environment_name: str, platform: str, desired_path: Path = Path.cwd()
-) -> Path:
-    """Create the vendored channel directory tree, given the name of the
-    environment.
+def _get_environment_name(environment_file: Path) -> str:
+    """find the name of the environment from the environment.yaml"""
 
-    Parameters
-    ----------
-    environment_name: str
-        name of the environment to create
-    platform: str
-        platform, eg. linux-64, osx-64, etc..
-    desired_path: pathlib.Path
-        root where to put the tree.  defaults to current directory.
-
-    Returns
-    -------
-    pathlib.Path
-        a path to the root of the newly created tree
+    with open(environment_file, "r") as f:
+        _yaml = yaml.safe_load(f)
+        return _yaml["name"]
 
 
-    basically creates
-        "desired_path/environment_name"
-        "desired_path/environment_name/platform"
-        "desired_path/environment_name/noarch"
+def _get_virtual_packages(
+    virtual_package_spec: Union[Path, str] = None
+) -> FakeRepoData:
+    """return a fake repository object  containing the virtual packages
+    specified or the conda-lock defaults if virtual_package_spec is None
     """
-    assert isinstance(desired_path, Path)
 
-    def _mkdir(p: Path):
-        try:
-            Path.mkdir(p)
-        except Exception as e:
-            click.echo(str(e))
-            sys.exit(f"an error occurred creating directory {str(p)}")
+    if virtual_package_spec is None:
+        return default_virtual_package_repodata()
 
-    root = desired_path / environment_name
-    _mkdir(root)
-    _mkdir(root / platform)
-    _mkdir(root / "noarch")
-    return root
+    if isinstance(virtual_package_spec, str):
+        virtual_package_spec = Path(virtual_package_spec)
+
+    return virtual_package_repo_from_specification(virtual_package_spec)
 
 
-# get formatted list of packages (optionally with their version requirements
-# ready to be sent *back* to conda-lock)
 def _get_query_list(lock_spec: LockSpecification) -> List[str]:
     """Go through the LockSpecification object and grab all the packages
     with their versions into a list.
@@ -216,9 +199,9 @@ def solve_environment(
     environment_file: Path,
     solver: str,
     platform: str,
-    virtual_package_spec: Path = None
+    virtual_package_spec: Union[Path, str] = None,
 ) -> List[FetchAction]:
-    """Solve the environment specified in the conda environment_yaml,
+    """Solve the environment specified in the conda environment_file,
     and return a list of all the required packages with enough metadata
     to generate a repo_data.json.
 
@@ -233,42 +216,42 @@ def solve_environment(
     platform: str
         platform to vendor for: eg. linux-32, win-64, osx-64, etc.
 
+    virtual_package_spec: pathlib.Path or str
+        location of a conda-lock virtual package specification yaml.  See
+        the documentation for conda-lock for the correct format.  If
+        this is None, use the default virtual packages that conda-lock
+        provides for {platform}
+
     Returns
     -------
     list [ conda_lock.conda_solver.FetchAction ]
 
     """
     assert isinstance(environment_file, Path)
-    if virtual_package_spec is not None:
-        assert isinstance(virtual_package_spec, Path)
 
-    # generate conda-lock's LockSpecification
-    lock_spec = _parse_environment_file(environment_file, platform)
+    # generate conda-lock's LockSpecification, this will parse the environment
+    # file for us and give us more easily handled requirements.
+    lock_spec = _generate_lock_spec(environment_file, platform)
     specs = _get_query_list(lock_spec)
+
+    # find virtual packages or use defaults
+    virt_pkgs = _get_virtual_packages(virtual_package_spec)
 
     _cyan(f"Using Solver: {solver}", bold=False)
     _cyan(f"Solving for Platform: {platform}", bold=False)
     _cyan(f"Solving for Spec: {specs}", bold=False)
-    if virtual_package_spec is None:
-        _cyan("Virtual Packages: conda-lock default", bold=False)
-    else:
-        _cyan(f"Virtual Packages: {virtual_package_spec}", bold=False)
-
-    #decide on virtual-packages
-    if virtual_package_spec is not None:
-        virtual_package_repodata = virtual_package_repo_from_specification(virtual_package_spec)
-    else:
-        virtual_package_repodata = default_virtual_package_repodata()
+    _cyan("Virtual Packages:", bold=False)
+    for _, pkg in virt_pkgs.all_repodata[platform]["packages"].items():
+        _cyan(f"    {pkg['name']}: {pkg['version']}", bold=False)
 
     # let conda-lock solve for the environment
-    virtual_package_chan = virtual_package_repodata.channel
-    channels = [*lock_spec.channels, virtual_package_chan]
+    channels = [*lock_spec.channels, virt_pkgs.channel]
     solution = solve_specs_for_arch(solver, channels, specs, platform)
-    solution = _remove_channel(solution, virtual_package_chan.url)
+    solution = _remove_channel(solution, virt_pkgs.channel.url)
     if not solution["success"]:
-        sys.exit(
-            f"Failed to Solve for {specs}\n Using {solver} for {platform}"
-        )
+        _red(f"Failed to Solve for {specs}")
+        _red(f"Using {solver} for {platform}")
+        sys.exit(1)
     _green("Successfull Solve")
 
     # unfortunately Conda sometimes doesn't fill out the FETCH actions
@@ -355,13 +338,11 @@ def _reconstruct_repodata_json(
         json.dump(repo_data, f)
 
 
-# hotfix vendored repodata.json given the input of FETCH action packages
-# from conda-lock's solve results
-def hotfix_vendored_repodata_json(
-    package_list: List[FetchAction], vendored_dir_path: Path
+def create_repodata_json(
+    package_list: List[FetchAction], vendored_root: Path
 ):
     """Go through the package_list, i.e. the solution provided by conda_lock,
-    and generate a new repodata.json at vendored_dir_path/{subdir}, where
+    and generate a new repodata.json at vendored_root/{subdir}, where
     subdir is either noarch or the platform (as specified in the metadata
     in package_list).
 
@@ -370,7 +351,7 @@ def hotfix_vendored_repodata_json(
     package_list: list [ conda_lock.conda_solver.FetchAction ]
         list of packages (and their metadata) provided by conda-lock
 
-    vendored_dir_path: pathlib.Path
+    vendored_root: pathlib.Path
         location of the root of the new conda channel
     """
     channels = []
@@ -408,7 +389,7 @@ def hotfix_vendored_repodata_json(
             )
             _reconstruct_repodata_json(
                 f"{channel}/repodata.json",
-                vendored_dir_path / subdir,
+                vendored_root / subdir,
                 package_list,
             )
 
@@ -416,7 +397,7 @@ def hotfix_vendored_repodata_json(
 # TODO: download and checksum in chunks
 # https://stackoverflow.com/questions/16694907/download-large-file-in-python-with-requests
 def download_packages(
-    package_list: List[FetchAction], vendored_path: Path, platform: str
+    package_list: List[FetchAction], vendored_root: Path, platform: str
 ):
     """For each Conda package specified in package_list.  Fetch the binary
     from the url (in the metadata).  Calculate the checksum and verify
@@ -427,21 +408,21 @@ def download_packages(
     package_list: list [ conda_lock.conda_solver.FetchAction ]
         list of packages (and their metadata) provided by conda-lock
 
-    vendored_dir_path: pathlib.Path
+    vendored_root: pathlib.Path
         location of the root of the new conda channel
 
     platform: str
         platform to vendor: e.g. linux-64, osx-32, etc.
 
     """
-    assert isinstance(vendored_path, Path)
+    assert isinstance(vendored_root, Path)
     _green("Downloading and Verifying SHA256 Checksums for Solved Packages")
 
     with click.progressbar(
         package_list, label="Downloading Progress"
     ) as pkgs:
         for pkg in pkgs:
-            dest_dir = vendored_path / pkg["subdir"]
+            dest_dir = vendored_root / pkg["subdir"]
             assert dest_dir.exists() and dest_dir.is_dir()
 
             file_data = _improved_download(pkg["url"]).content
@@ -584,7 +565,7 @@ def vendor(
     ironbank_gen: bool,
 ):
     """Main entry point to vendor a file.  This will (in the general case)
-    use conda-lock to solve the environment specified in an environment_yaml
+    use conda-lock to solve the environment specified in an environment.yaml
     passed in through file parameter. After a valid solution, it will
     download the corresponding Conda packages to a channel in
     current_dir/environment_name.  It creates a valid repodata.json for
@@ -619,40 +600,36 @@ def vendor(
     """
     _green(f"Vendoring Local Channel for file: {file}", bold=False)
 
+    environment_file = Path(file)
+    environment_name = _get_environment_name(environment_file)
+
+    vendored_root = Path.cwd() / environment_name
+    if vendored_root.exists():
+        _red(f"vendored channel destination {vendored_root} already exists")
+        sys.exit(1)
+
     if dry_run:
-        _red("Dry Run - Will Not Download Files")
-        package_list = solve_environment(Path(file), solver, platform)
-        _red("Dry Run Complete!")
+        _yellow("Dry Run - Will Not Download Files")
+    else:
+        Path.mkdir(vendored_root)
+        Path.mkdir(vendored_root / platform)
+        Path.mkdir(vendored_root / "noarch")
+
+    package_list = solve_environment(
+        environment_file, solver, platform, virtual_package_spec
+    )
+
+    if dry_run:
+        _green("Dry Run Complete!")
         click.echo(json.dumps(package_list, indent=4))
         sys.exit(0)
 
-    environment_yaml = Path(file)
+    create_repodata_json(package_list, vendored_root)
+    download_packages(package_list, vendored_root, platform)
 
-    # find the name of the environment from the environmant.yaml
-    with open(environment_yaml, "r") as environment_file:
-        try:
-            _yaml = yaml.safe_load(environment_file)
-            environment_name = _yaml["name"]
-        except yaml.YAMLError as err:
-            click.echo(err)
-            sys.exit(
-                f"Failed to read environment name from {environment_file}"
-            )
-
-    vendored_dir_path = create_vendored_dir(environment_name, platform)
-
-    if virtual_package_spec is not None:
-        virtual_package_spec = Path(virtual_package_spec)
-
-    package_list = solve_environment(environment_yaml, solver, platform,
-                                     virtual_package_spec)
-    hotfix_vendored_repodata_json(package_list, vendored_dir_path)
-
-    download_packages(package_list, vendored_dir_path, platform)
-    _green(
-        f"SHA256 Checksum Validation and Solved Packages Downloads Complete for {vendored_dir_path}"
-    )
-    _green(f"Vendoring Complete!\nVendored Channel: {vendored_dir_path}")
+    _green(f"SHA256 Checksum Validation and Packages Downloaded")
+    _green(f"Vendoring Complete!")
+    _green(f"Vendored Channel: {vendored_root}")
 
     if ironbank_gen:
         yaml_dump_ironbank_manifest(package_list)
@@ -682,7 +659,14 @@ def vendor(
     default=_get_conda_platform(),
     help="Platform to solve for.",
 )
-def ironbank_gen(file: str, solver: str, platform: str):
+@click.option(
+    "--virtual-package-spec",
+    default=None,
+    help="specify virtual packages injected into conda-lock solution",
+)
+def ironbank_gen(
+    file: str, solver: str, platform: str, virtual_package_spec: str
+):
     """Create an Iron Bank resources clause (in a yaml) "ib_manifest.yaml" in
     the current directory
 
@@ -697,8 +681,17 @@ def ironbank_gen(file: str, solver: str, platform: str):
     platform: str
         platform to vendor, e.g. linux-32, linux-64, osx-64, win-32
 
+    virtual_package_spec: str
+        location of virtual-packages.yml to be used by conda-lock.  The format
+        of the virtual-packages.yml is specified in the conda-lock
+        documentation.
+        Note: if a file named virutal-packages.yml exist in the directory
+        where conda-lock is run it will use that file.
+        see (https://github.com/conda-incubator/conda-lock).
     """
-    package_list = solve_environment(Path(file), solver, platform)
+    package_list = solve_environment(
+        Path(file), solver, platform, virtual_package_spec
+    )
     yaml_dump_ironbank_manifest(package_list)
 
 
@@ -707,19 +700,16 @@ def ironbank_gen(file: str, solver: str, platform: str):
 #              conda-vendor virtual-packages                              #
 #                                                                         #
 ###########################################################################
-@click.command(
-        "virtual-packages",
-        help="dump host virtual packages")
+@click.command("virtual-packages", help="dump host virtual packages")
 @click.option(
-        "--solver",
-        default="conda",
-        help="Sover to use. conda, mamba, micromamba"
-        )
+    "--solver", default="conda", help="Sover to use. conda, mamba, micromamba"
+)
 @click.option(
-        "-o", "--output",
-        default=None,
-        help="name of file to write.  Default is stdout."
-        )
+    "-o",
+    "--output",
+    default=None,
+    help="name of file to write.  Default is stdout.",
+)
 def virtual_packages(solver, output):
     from subprocess import check_output
     from shlex import split
@@ -737,21 +727,14 @@ def virtual_packages(solver, output):
         package_list[pkg[0]] = pkg[1]
 
     virtual_packages_dict = {
-            'subdirs': {
-                        f"{_get_conda_platform()}" : {
-                            "packages": package_list
-                            }
-                        }
-            }
+        "subdirs": {f"{_get_conda_platform()}": {"packages": package_list}}
+    }
 
     if output:
-        with open(output, 'w') as f:
+        with open(output, "w") as f:
             yaml.dump(virtual_packages_dict, f, indent=4)
     else:
         yaml.dump(virtual_packages_dict, sys.stdout, indent=4)
-
-
-
 
 
 main.add_command(vendor)

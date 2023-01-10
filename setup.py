@@ -21,7 +21,9 @@ setup(
     package_dir={"": "."},
     packages=find_packages(exclude=("tests",), where="."),
     url="https://github.com/MetroStar/conda-vendor",
-    entry_points={"console_scripts": ["conda-vendor = conda_vendor.__main__:cli"]},
+    entry_points={
+        "console_scripts": ["conda-vendor = conda_vendor.__main__:cli"]
+    },
     install_requires=["ruamel.yaml", "conda-lock>=1.2.1", "click"],
     setup_requires=["wheel"],
     python_requires=">=3.6",
