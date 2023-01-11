@@ -58,11 +58,12 @@ mamba create -n some-new-env --offline --channel ./my-vendored-channel --overrid
 ```
 
 #### Specifying Virtual Packages
-Conda uses *virtual packages* as a way to track system dependencies. Since
-these are not real packages they might not exist on the host system, or
-they might need to be manually specified. `conda-vendor`
-allows you to pass in a yaml file describing the virtual packages that
-are needed and their version.
+Conda uses *virtual packages* as a way to track system dependencies.
+For more information about *virtual packages* see the conda documentation
+[Managing virtual packages](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-virtual.html).
+Since these are not real packages they might not exist on the host system, or
+they might need to be manually specified. `conda-vendor` allows you to pass in
+a yaml file describing the *virtual packages* that are needed and their version.
 
 By default `conda-vendor` uses a set of packages tied to the `--platform`
 options.  To override this selection use the `--virtual-package-spec` options
@@ -77,7 +78,9 @@ subdirs:
 For more information see the documentation for
 [`conda-lock`](https://github.com/conda-incubator/conda-lock).
 
-`conda-vendor` now includes a convenience command `virtual-packages` that will create an appropriately formatted virtual package spec for the system
+In order to assist with a correct choice of *virtual packages*, `conda-vendor` now
+includes a convenience command `virtual-packages` that will create an
+appropriately formatted virtual package spec for the system
 that conda vendor is running on.
 ```bash
 $ conda-vendor virtual-packages

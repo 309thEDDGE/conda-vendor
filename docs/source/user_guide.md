@@ -22,9 +22,27 @@ platform.  The `vendor` command allows this with the `--platform` flag.  The usa
 $ conda-vendor vendor --file my_environment.yaml  --platform linux-64
 ```
 
-By default `conda-vendor` will use a set of *virtual packages* for the specified
-platform. [If no platform is supplied it will use the host platform as if it were supplied explicitly, and thus the *virtual packages* might not be correct
-for the host.]  These packages can be overwritten by providing a yaml files
+By default `conda-vendor` will use a set of *virtual packages* for the
+specified platform. Under the hood `conda-vendor` uses the package
+`conda-lock`, with the default virtual packages from `conda-lock`, to solve
+the environment.[^1]  Virtual packages are the mechanism conda uses to encode
+system specific configuration.  For more information about *virtual packages*
+see the conda documentation
+[Managing virtual packages](https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-virtual.html).
+
+[^1]:The `conda-lock` documentation is located here:
+    [conda-lock](https://github.com/conda-incubator/conda-lock).  The set of
+default packages must be read from the `conda-lock` source code specifically
+in the `conda_lock.virtual_package` module.
+
+
+**note: If no platform option is supplied to `conda-vendor`, it will use the host platform
+as if it were supplied explicitly.  This means that `conda-vendor` will use the default
+set of *virutal packages* specified by `conda-lock`, and so the *virtual packages* might not
+be correct for the host.  To ensure a correct solution supply the virtual
+packages explictly as explaineed below.**
+
+These packages can be overwritten by providing a yaml files
 specifying the desired *virtual packages* using the `--virtual-package-spec`
 option:
 ```bash
