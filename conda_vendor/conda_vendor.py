@@ -425,12 +425,19 @@ def download_packages(
             dest_dir = vendored_root / pkg["subdir"]
             assert dest_dir.exists() and dest_dir.is_dir()
 
-            file_data = _improved_download(pkg["url"]).content
+            response = _improved_download(pkg["url"])
+            if response.status_code >= 400:
+                _red(f"Download Failed for {pkg['url']}")
+                _red(f"server responded: {response.status_code}")
+                sys.exit(1)
+
+            file_data = response.content
 
             # verify checksum
             sha256 = hashlib.sha256(file_data).hexdigest()
             if sha256 != pkg["sha256"]:
-                sys.exit("SHA256 Checksum Validation Failed")
+                _red(f"SHA256 Checksum Validation Failed for {pkg['fn']}")
+                sys.exit(1)
 
             with open(dest_dir / pkg["fn"], "wb") as f:
                 f.write(file_data)
