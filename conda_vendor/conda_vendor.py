@@ -241,7 +241,7 @@ def solve_environment(
     _cyan(f"Solving for Platform: {platform}", bold=False)
     _cyan(f"Solving for Spec: {specs}", bold=False)
     _cyan("Virtual Packages:", bold=False)
-    for _, pkg in virt_pkgs.all_repodata[platform]["packages"].items():
+    for pkg in virt_pkgs.all_repodata[platform]["packages"].values():
         _cyan(f"    {pkg['name']}: {pkg['version']}", bold=False)
 
     # let conda-lock solve for the environment
