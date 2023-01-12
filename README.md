@@ -67,7 +67,7 @@ a yaml file describing the *virtual packages* that are needed and their version.
 
 By default `conda-vendor` uses a set of packages tied to the `--platform`
 options.  To override this selection use the `--virtual-package-spec` options
-with the path to a spec yaml.  The yaml should have look something like
+with the path to a spec yaml.  The yaml should look something like
 ```yaml
 subdirs:
   linux-64:

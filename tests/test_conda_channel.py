@@ -1,4 +1,4 @@
-from unittest.mock import Mock, call, mock_open, patch
+from unittest.mock import Mock, patch
 from requests import Response
 
 from conda_vendor.conda_vendor import _improved_download

@@ -709,7 +709,9 @@ def ironbank_gen(
 ###########################################################################
 @click.command("virtual-packages", help="dump host virtual packages")
 @click.option(
-    "--solver", default="conda", help="Sover to use. conda, mamba, micromamba"
+    "--solver",
+    default="conda",
+    help="Solver to use. conda, mamba, micromamba",
 )
 @click.option(
     "-o",
