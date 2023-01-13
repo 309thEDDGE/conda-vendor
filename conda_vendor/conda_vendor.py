@@ -283,63 +283,73 @@ def _improved_download(url: str):
     return session.get(url)
 
 
-def _reconstruct_repodata_json(
-    repodata_url: str, dest_dir: Path, package_list: List[FetchAction]
-):
-    """Given the url of a repodata.json file, walk through the package list
-    specified and grab all the metadata about the package from the specified
-    repodata.json.  Then write a new repodata.json at dest_dir/repo_data.json
-    with the given metadata.
+def _create_repodata_for_subdir(
+    subdir: str, package_list: List[FetchAction]
+) -> dict:
+    """
+    Create an in memory repodata object for the subdirectory {subdir} from the
+    list of packages supplied.  This goes out to the actual channel the
+    solution specifies and gets a copy of the channels repodata.json and uses
+    that to create the local repodata dictionary.
 
     Parameters
     ----------
-    repodata_url: str
-        location of the repodata.json describing the solved package metadata
+    subdir: str
+        subdirectory to create repodata.json for, e.g. linux-64, noarch, ...
 
-    dest_dir: pathlib.Path
-        location where the vendored packages are or will be stored.
+    package_list: List[FetchAction]
+        list of packages to vendor.  **These packages should all satisfy the
+        precondition that package["subdir"] == {subdir}**
 
-    package_list: list [ conda_lock.conda_solver.FetchAction ]
-        list of packages (and their metadata) provided by conda-lock
+    Returns
+    -------
+    dictionary object that is the structured repodata
 
     """
-    assert isinstance(dest_dir, Path)
-
     repo_data = {
-        "info": {"subdir": dest_dir.name},
+        "info": {"subdir": subdir},
         "packages": {},
         "packages.conda": {},
     }
 
-    valid_names = [pkg["fn"] for pkg in package_list]
+    channels = list(set((pkg["channel"] for pkg in package_list)))
+    for chan in channels:
+        channel_packages = [
+            pkg for pkg in package_list if pkg["channel"] == chan
+        ]
 
-    live_repodata_json = _improved_download(repodata_url).json()
-    _packages = live_repodata_json.get("packages", {})
-    _packages_dot_conda = live_repodata_json.get("packages.conda", {})
+        url = f"{chan}/repodata.json"
+        _yellow(f"Downloading {url}")
 
-    with click.progressbar(
-        length=len(_packages) + len(_packages_dot_conda),
-        label="Hotfix Patching repodata.json",
-    ) as pb:
+        live_repodata_json = _improved_download(url).json()
+        _live_pkgs = live_repodata_json.get("packages", {})
+        _live_pkgs_conda = live_repodata_json.get("packages.conda", {})
 
-        for name, entry in _packages.items():
-            if name in valid_names:
-                repo_data["packages"][name] = entry
-            pb.update(1)
+        with click.progressbar(
+            channel_packages, label=f"[{url[-35:]}]"
+        ) as packages:
+            for pkg in packages:
+                _live_repodata = _live_pkgs.get(pkg["fn"])
+                if _live_repodata:
+                    assert repo_data["packages"].get(pkg["fn"]) is None
+                    repo_data["packages"][pkg["fn"]] = _live_repodata
+                    continue
 
-        for name, entry in _packages_dot_conda.items():
-            if name in valid_names:
-                repo_data["packages.conda"][name] = entry
-            pb.update(1)
+                _live_repodata = _live_pkgs_conda.get(pkg["fn"])
+                if _live_repodata:
+                    assert repo_data["packages.conda"].get(pkg["fn"]) is None
+                    repo_data["packages.conda"][pkg["fn"]] = _live_repodata
+                    continue
 
-    # write to destination
-    dest_file = Path(f"{dest_dir}/repodata.json")
-    with dest_file.open("w") as f:
-        json.dump(repo_data, f)
+                _red(f"unable to find package {pkg['fn']} at {url}")
+                _red(pkg)
+                sys.exit(1)
+
+    return repo_data
 
 
 def create_repodata_json(
-    package_list: List[FetchAction], vendored_root: Path
+    package_list: List[FetchAction], vendored_root: Path, platform: str
 ):
     """Go through the package_list, i.e. the solution provided by conda_lock,
     and generate a new repodata.json at vendored_root/{subdir}, where
@@ -353,45 +363,41 @@ def create_repodata_json(
 
     vendored_root: pathlib.Path
         location of the root of the new conda channel
-    """
-    channels = []
-    subdirs = []
 
+    platform: str
+        platform to vendor
+    """
+    assert isinstance(vendored_root, Path)
+
+    subdirs = [platform, "noarch"]
+
+    _blue(70 * "=")
     for pkg in package_list:
-        channels.append(pkg["channel"])
         subdirs.append(pkg["subdir"])
 
-        _blue(70 * "=")
         _yellow(f"Channel: {pkg['channel']}", bold=False)
         _yellow(f"Package: {pkg['fn']}", bold=False)
         _yellow(f"URL: {pkg['url']}", bold=False)
         _yellow(f"SHA256: {pkg['sha256']}", bold=False)
         _yellow(f"Subdirectory: {pkg['subdir']}", bold=False)
         _yellow(f"Timestamp: {pkg['timestamp']}", bold=False)
-        _blue(70 * "=")
+        click.echo()
 
-    channels = list(set(channels))
+    _blue(70 * "=")
+
     subdirs = list(set(subdirs))
-
-    # patch repodata.json for each channel + subdir
-
-    # this monstrosity just calls reconstruct_repodata for each subdir like
-    # "noarch" , "osx-64", "linux-64", with each channel like
-    # https://conda-forge/blah/osx-64 or
-    #  file:///usr/share/blah/local-channel/osx-64 we decide if they mach if
-    # subdir is a substring of the channel
-    #
-    # TODO: This will break if we try to vendor from more than 1 channel
     for subdir in subdirs:
-        for channel in (ch for ch in channels if subdir in ch):
-            _red(
-                f"Reconstructing repodata.json with Hotfix for {subdir} using {channel}/repodata.json"
-            )
-            _reconstruct_repodata_json(
-                f"{channel}/repodata.json",
-                vendored_root / subdir,
-                package_list,
-            )
+        repo_data = _create_repodata_for_subdir(
+            subdir,
+            [pkg for pkg in package_list if pkg["subdir"] == subdir],
+        )
+
+        # write to destination
+        dest_file = vendored_root / subdir / "repodata.json"
+        with dest_file.open("w") as f:
+            json.dump(repo_data, f)
+
+    _blue(70 * "=")
 
 
 # TODO: download and checksum in chunks
@@ -631,7 +637,7 @@ def vendor(
         click.echo(json.dumps(package_list, indent=4))
         sys.exit(0)
 
-    create_repodata_json(package_list, vendored_root)
+    create_repodata_json(package_list, vendored_root, platform)
     download_packages(package_list, vendored_root, platform)
 
     _green(f"SHA256 Checksum Validation and Packages Downloaded")

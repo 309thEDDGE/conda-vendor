@@ -46,6 +46,12 @@ dependencies:
 - pytorch
 - torchvision
 """,
+    "tip": """name: tipvendor
+channels:
+- conda-forge
+dependencies:
+- tip
+""",
 }
 
 
@@ -137,7 +143,7 @@ def test_solvable_environment(make_env):
     solution = solve_environment(env, "conda", "linux-64")
 
 
-# tests that if the sovle_environment call does fail, an Exception is raised
+# tests that if the solve_environment call does fail, an Exception is raised
 @pytest.mark.integration
 def test_notsolvable_environment(make_env):
     env = make_env(environments["notsolvable"])
@@ -185,7 +191,7 @@ def test_creates_repodata_json(make_env, tmp_path_factory):
 
     root = _make_directories(tmp_path_factory, "conda_mirror")
     package_list = solve_environment(env, "conda", "linux-64")
-    create_repodata_json(package_list, root)
+    create_repodata_json(package_list, root, "linux-64")
 
     assert ((root / "linux-64") / "repodata.json").exists()
     assert ((root / "noarch") / "repodata.json").exists()
@@ -269,3 +275,22 @@ def test_solve_without_cuda_explicit(make_env):
             return
 
     pytest.fail("pytorch package not found in solution")
+
+
+# full conda vendor call. checks that the subdir repodata.json are
+# generated.  This was a bug.
+@pytest.mark.integration
+def test_vendor_tip_repodata_json_exist(make_env):
+    env = make_env(environments["tip"])
+    print(env)
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        result = runner.invoke(
+            vendor,
+            ["--file", env, "--solver", "conda", "--platform", "linux-64"],
+        )
+        tipvendor = Path.cwd() / "tipvendor"
+        assert (tipvendor / "linux-64" / "repodata.json").exists()
+        assert (tipvendor / "noarch" / "repodata.json").exists()
+
+    assert result.exit_code == 0

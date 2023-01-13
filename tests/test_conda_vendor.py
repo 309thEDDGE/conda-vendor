@@ -31,7 +31,7 @@ from conda_vendor.conda_vendor import (
     create_repodata_json,
     download_packages,
     solve_environment,
-    yaml_dump_ironbank_manifest
+    yaml_dump_ironbank_manifest,
 )
 
 
@@ -363,7 +363,9 @@ def test_create_repodata_json(
 ):
 
     mock_download.return_value = create_repodata_output
-    create_repodata_json(create_repodata_input["FETCH"], download_root)
+    create_repodata_json(
+        create_repodata_input["FETCH"], download_root, "linux-64"
+    )
 
     with open(download_root / "linux-64" / "repodata.json", "r") as f:
         repodata = json.load(f)
@@ -376,6 +378,36 @@ def test_create_repodata_json(
 
     for pkg in create_repodata_input["FETCH"]:
         assert pkg["name"] in repodata_packages
+
+
+@patch("conda_vendor.conda_vendor._improved_download")
+def test_create_repodata_json_both_subdir_empty(
+    mock_download,
+    create_repodata_output,
+    download_root,
+):
+    mock_download.return_value = create_repodata_output
+    create_repodata_json([], download_root, "linux-64")
+
+    assert (download_root / "linux-64" / "repodata.json").exists()
+    assert (download_root / "noarch" / "repodata.json").exists()
+
+
+@patch("conda_vendor.conda_vendor._improved_download")
+def test_create_repodata_json_noarch_subdir_empty(
+    mock_download,
+    create_repodata_input,
+    create_repodata_output,
+    download_root,
+):
+
+    mock_download.return_value = create_repodata_output
+    create_repodata_json(
+        create_repodata_input["FETCH"], download_root, "linux-64"
+    )
+
+    assert (download_root / "linux-64" / "repodata.json").exists()
+    assert (download_root / "noarch" / "repodata.json").exists()
 
 
 #####################################################################
@@ -526,11 +558,14 @@ def test_download_packages_bad_url(
 # test yaml_dump_ironbank_manifest
 #####################################################################
 
-#remove virtual packages from th pytorch solution
+# remove virtual packages from th pytorch solution
 @pytest.fixture
 def pytorch_solution_clean(pytorch_solution):
-    chan = "file:///var/folders/r0/7mmzfzr15cjbl3qyzjgr8pzw0000gt/T/tmp1le4_9n8"
-    return  _remove_channel(pytorch_solution, chan)["actions"]["FETCH"]
+    chan = (
+        "file:///var/folders/r0/7mmzfzr15cjbl3qyzjgr8pzw0000gt/T/tmp1le4_9n8"
+    )
+    return _remove_channel(pytorch_solution, chan)["actions"]["FETCH"]
+
 
 @contextmanager
 def set_cwd(new_dir):
@@ -541,8 +576,12 @@ def set_cwd(new_dir):
     finally:
         os.chdir(cur)
 
-def test_yaml_dump_ironbank_manifest(pytorch_solution_clean, tmp_path_factory):
+
+def test_yaml_dump_ironbank_manifest(
+    pytorch_solution_clean, tmp_path_factory
+):
     import os
+
     cur = os.getcwd()
 
     package_list = pytorch_solution_clean
@@ -553,9 +592,9 @@ def test_yaml_dump_ironbank_manifest(pytorch_solution_clean, tmp_path_factory):
         with open("ib_manifest.yaml", "r") as f:
             ib_manifest = yaml.load(f, Loader=yaml.SafeLoader)
 
-        expected_packages = set([pkg["fn"] for pkg in package_list ])
-        actual_packages = set([pkg["filename"] for pkg in ib_manifest["resources"]])
+        expected_packages = set([pkg["fn"] for pkg in package_list])
+        actual_packages = set(
+            [pkg["filename"] for pkg in ib_manifest["resources"]]
+        )
 
         assert expected_packages == actual_packages
-
-
