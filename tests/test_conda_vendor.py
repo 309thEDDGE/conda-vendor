@@ -118,14 +118,14 @@ dependencies:
 @patch("conda_vendor.conda_vendor.default_virtual_package_repodata")
 def test_get_virtual_packages_default(mock_default_virtual_package_repodata):
     mock_default_virtual_package_repodata.return_value = True
-    p = _get_virtual_packages()
+    p = _get_virtual_packages("fake-64")
     mock_default_virtual_package_repodata.assert_called_once()
 
 
 @patch("conda_vendor.conda_vendor.virtual_package_repo_from_specification")
 def test_get_virtual_packages_str(mock_virtual_package_repodata_from_spec):
     mock_virtual_package_repodata_from_spec.return_value = True
-    p = _get_virtual_packages("test.yml")
+    p = _get_virtual_packages("fake-64", "test.yml")
     mock_virtual_package_repodata_from_spec.assert_called_once()
     args = mock_virtual_package_repodata_from_spec.call_args.args
     assert isinstance(args[0], Path)
@@ -134,7 +134,7 @@ def test_get_virtual_packages_str(mock_virtual_package_repodata_from_spec):
 @patch("conda_vendor.conda_vendor.virtual_package_repo_from_specification")
 def test_get_virtual_packages_path(mock_virtual_package_repodata_from_spec):
     mock_virtual_package_repodata_from_spec.return_value = True
-    p = _get_virtual_packages(Path("test.yml"))
+    p = _get_virtual_packages("fake-64", Path("test.yml"))
     mock_virtual_package_repodata_from_spec.assert_called_once()
     args = mock_virtual_package_repodata_from_spec.call_args.args
     assert isinstance(args[0], Path)
@@ -231,7 +231,7 @@ def test_remove_channel_download(
         return response
 
     mock_improved_download.side_effect = _mock_download
-    download_packages(solution, download_root, "linux-64")
+    download_packages(solution, download_root)
 
 
 #####################################################################
@@ -469,7 +469,7 @@ def test_download_packages(
         return response
 
     mock_download.side_effect = _mock_download
-    download_packages(packages, download_root, "linux-64")
+    download_packages(packages, download_root)
 
     for pkg in packages:
         loc = download_root / "linux-64" / pkg["fn"]
@@ -502,7 +502,7 @@ def test_download_packages_bad_sha(
     mock_download.side_effect = _mock_download
 
     with pytest.raises(SystemExit) as e:
-        download_packages(packages[:1], download_root, "linux-64")
+        download_packages(packages[:1], download_root)
 
         assert e.type == SystemExit
         assert e.value.code == 1
@@ -530,7 +530,7 @@ def test_download_packages_404(
 
     mock_download.side_effect = _mock_download
     with pytest.raises(SystemExit) as e:
-        download_packages(packages[:1], download_root, "linux-64")
+        download_packages(packages[:1], download_root)
 
         assert e.type == SystemExit
         assert e.value.code == 1
@@ -550,7 +550,7 @@ def test_download_packages_bad_url(
 
     mock_download.side_effect = _mock_download
     with pytest.raises(Exception):
-        download_packages(packages[:1], download_root, "linux-64")
+        download_packages(packages[:1], download_root)
         assert True
 
 

@@ -204,7 +204,7 @@ def test_download_packages(make_env, tmp_path_factory):
 
     root = _make_directories(tmp_path_factory, "conda_mirror")
     package_list = solve_environment(env, "conda", "linux-64")
-    download_packages(package_list, root, "linux-64")
+    download_packages(package_list, root)
 
     for pkg in package_list:
         assert ((root / pkg["subdir"]) / pkg["fn"]).exists()
