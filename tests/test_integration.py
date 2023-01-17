@@ -9,6 +9,7 @@ from pathlib import Path
 from conda_vendor.conda_vendor import (
     _generate_lock_spec,
     _get_conda_platform,
+    _get_system_virtual_packages,
     create_repodata_json,
     download_packages,
     solve_environment,
@@ -17,14 +18,15 @@ from conda_vendor.conda_vendor import (
 
 
 environments = {
-    "minimal": """
+    "minimal": """\
 name: minimal_env
 channels:
 - main
 dependencies:
 - python==3.9.5
 """,
-    "conda_mirror": """name: conda_mirror
+    "conda_mirror": """\
+name: conda_mirror
 channels:
 - main
 - conda-forge
@@ -32,13 +34,15 @@ dependencies:
 - python==3.9.5
 - conda-mirror==0.8.2
 """,
-    "notsolvable": """name: not_solvable
+    "notsolvable": """\
+name: not_solvable
 channels:
 - main
 dependencies:
 - fjdlkfjdsalfkjdsalkfjadflkdajs==100.0.0
 """,
-    "pytorch": """name: torch
+    "pytorch": """\
+name: torch
 channels:
 - conda-forge
 dependencies:
@@ -46,7 +50,8 @@ dependencies:
 - pytorch
 - torchvision
 """,
-    "tip": """name: tipvendor
+    "tip": """\
+name: tipvendor
 channels:
 - conda-forge
 dependencies:
@@ -215,11 +220,21 @@ def test_download_packages(make_env, tmp_path_factory):
 @pytest.mark.integration
 def test_solve_with_cuda_implicit(make_env):
     env = make_env(environments["pytorch"])
+    expect_cuda = True  # cross platform we exect conda-lock to specify cuda
+
+    if _get_conda_platform() == "linux-64":
+        vpkgs = _get_system_virtual_packages("conda")
+        vpkg_names = [pkg["name"] for pkg in vpkgs]
+        expect_cuda = bool("__cuda" in vpkg_names)
+
     package_list = solve_environment(env, "conda", "linux-64")
 
     for pkg in package_list:
         if pkg["name"] == "pytorch":
-            assert "cuda" in pkg["fn"]
+            if excpect_cuda:
+                assert "cuda" in pkg["fn"]
+            else:
+                assert "cuda" not in pkg["fn"]
             return
 
     pytest.fail("pytorch package not found in solution")

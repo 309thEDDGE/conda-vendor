@@ -243,12 +243,29 @@ def test_remove_channel_download(
 def pytorch_environment(tmp_path_factory):
     f = tmp_path_factory.mktemp("pytorch_env") / "environment.yml"
     f.write_text(
-        """name: pytorch_env
+        """\
+name: pytorch_env
 channels:
 - conda-forge
 dependencies:
 - pytorch
 - torchvision
+"""
+    )
+    return f
+
+
+@pytest.fixture
+def linux_64_virtual_packages(tmp_path_factory):
+    f = tmp_path_factory.mktemp("vpkgs") / "virtual_packages.yml"
+    f.write_text(
+        """\
+subdirs:
+  linux-64:
+    packages:
+      __glibc: 2.28
+      __unix: 0
+      __linux: 5.15
 """
     )
     return f
@@ -299,6 +316,7 @@ def test_reconstruct_fetch_actions(
     mock_remove_channel,
     pytorch_environment,
     pytorch_solution,
+    linux_64_virtual_packages,
 ):
 
     # this corresponds to the virtual packages that were made for the file
@@ -325,7 +343,9 @@ def test_reconstruct_fetch_actions(
 
     # looking_for {pkgs_dirs}/dummy_packages0-0/info/repodata_record.json
     _create_repodata_record_json()
-    solution = solve_environment(pytorch_environment, "conda", "linux-64")
+    solution = solve_environment(
+        pytorch_environment, "conda", "linux-64", linux_64_virtual_packages
+    )
 
     assert "dummy_package" in [pkg["name"] for pkg in solution]
 
