@@ -231,7 +231,7 @@ def test_solve_with_cuda_implicit(make_env):
 
     for pkg in package_list:
         if pkg["name"] == "pytorch":
-            if excpect_cuda:
+            if expect_cuda:
                 assert "cuda" in pkg["fn"]
             else:
                 assert "cuda" not in pkg["fn"]
