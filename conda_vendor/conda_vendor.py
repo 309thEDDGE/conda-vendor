@@ -4,7 +4,7 @@
  structure of a Conda channel.  We grab the repodata for each package from
  the original source and write a condensed repodata.json only having our
  vendored packages.
- """
+"""
 import hashlib
 import json
 import struct
@@ -75,19 +75,6 @@ from conda_vendor.version import __version__
 #      timestamp: int
 #      url: str
 #      version: str
-#
-#
-#  implementation gotchas:
-#
-#  cross platform vendoring requires specifying conda virtual_packages __unix,
-#  __linux, __osx, __cuda, __glibc, etc.  so there are some shenanigans to get
-#  a sensible default virtual_package list from conda-lock.  (This is stored
-#  in a temporary directory).  After we solve, we remove all virtual_packages
-#  from the solution set.
-#
-#  the way we write repodata.json for each subdirectory will break if we
-#  vendor from multiple sources
-
 
 def _blue(msg: str, bold: bool = True):
     click.echo(click.style(msg, fg="blue", bg="black", bold=bold))
