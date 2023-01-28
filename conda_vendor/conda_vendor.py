@@ -35,6 +35,7 @@ from conda_lock.conda_solver import (
     _reconstruct_fetch_actions as reconstruct_fetch_actions,
 )
 from conda_lock.conda_solver import solve_specs_for_arch
+from conda_lock.invoke_conda import is_micromamba
 from conda_lock.src_parser import LockSpecification
 from conda_lock.src_parser.environment_yaml import parse_environment_file
 from conda_lock.virtual_package import (
@@ -75,6 +76,7 @@ from conda_vendor.version import __version__
 #      timestamp: int
 #      url: str
 #      version: str
+
 
 def _blue(msg: str, bold: bool = True):
     click.echo(click.style(msg, fg="blue", bg="black", bold=bold))
@@ -170,7 +172,9 @@ def _get_query_list(lock_spec: LockSpecification) -> List[str]:
     return specs
 
 
-def _remove_channel(solution: DryRunInstall, channel: str):
+def _remove_channel(
+    solution: DryRunInstall, channel: str, solver: str = "conda"
+):
     """Filter a conda-lock solution and remove any packages from the specified
     channel.
 
@@ -181,6 +185,10 @@ def _remove_channel(solution: DryRunInstall, channel: str):
 
     channel: str
         the channel to remove.
+
+    solver: str
+        which solver to use.  Micromamba has a different form for "LINK" actions
+        than conda or mamba
     """
     fetch = []
     link = []
@@ -190,10 +198,16 @@ def _remove_channel(solution: DryRunInstall, channel: str):
             continue
         fetch.append(entry)
 
-    for entry in solution["actions"]["LINK"]:
-        if entry["base_url"] == channel:
-            continue
-        link.append(entry)
+    if not is_micromamba(solver):
+        for entry in solution["actions"]["LINK"]:
+            if entry["base_url"] == channel:
+                continue
+            link.append(entry)
+    else:
+        for entry in solution["actions"]["LINK"]:
+            if entry["channel"].startswith(channel):
+                continue
+            link.append(entry)
 
     solution["actions"]["FETCH"] = fetch
     solution["actions"]["LINK"] = link
@@ -282,7 +296,9 @@ def solve_environment(
     solution = solve_specs_for_arch(solver, channels, spec, platform)
 
     if virt_pkgs:
-        solution = _remove_channel(solution, virt_pkgs.channel_url_posix)
+        solution = _remove_channel(
+            solution, virt_pkgs.channel_url_posix, solver
+        )
 
     if not solution["success"]:
         _red(f"Failed to Solve for {spec}")
