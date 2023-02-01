@@ -591,11 +591,18 @@ def _get_system_virtual_packages(solver: str) -> List[dict]:
     conda_info = check_output(split(f"{solver} info --json"), text=True)
     _json = json.loads(conda_info)
     virtual_packages = []
-    for pkg in _json.get("virtual_pkgs", []):
-        virtual_packages.append(
-            {"name": pkg[0], "version": pkg[1], "build_string": pkg[2]}
-        )
 
+    if not is_micromamba(solver):
+        for pkg in _json.get("virtual_pkgs", []):
+            virtual_packages.append(
+                    {"name": pkg[0], "version": pkg[1], "build_string": pkg[2]}
+                    )
+    else:
+        for pkg in _json.get("virtual packages", []):
+            pkg = pkg.split("=")
+            virtual_packages.append(
+                    {"name": pkg[0], "version": pkg[1], "build_string": pkg[2]}
+                    )
     return virtual_packages
 
 
