@@ -13,6 +13,7 @@ import sys
 from pathlib import Path
 from pprint import pformat
 from shlex import split
+from shutil import which
 from subprocess import check_output
 from typing import List, Union
 
@@ -264,7 +265,7 @@ def solve_environment(
         path to the environment.yaml to solve
 
     solver: str
-        which conda is used to solve: conda, miniconda, mamba, etc.
+        which conda is used to solve: conda, mamba, micromamba, etc.
 
     platform: str
         platform to vendor for: eg. linux-32, win-64, osx-64, etc.
@@ -598,6 +599,19 @@ def _get_system_virtual_packages(solver: str) -> List[dict]:
     return virtual_packages
 
 
+def _validate_solver(solver: str):
+    """make sure we have an actual binary to solve with
+
+    Parameters
+    ----------
+    solver: str
+        solver to use e.g. conda, mamba, micromamba
+    """
+    if which(solver) is None:
+        _red(f"Unable to find {solver} on PATH.")
+        sys.exit(1)
+
+
 ###########################################################################
 #                                                                         #
 #                    conda-vendor vendor                                  #
@@ -688,6 +702,7 @@ def vendor(
 
     environment_file = Path(file)
     environment_name = _get_environment_name(environment_file)
+    _validate_solver(solver)
 
     vendored_root = Path.cwd() / environment_name
     if vendored_root.exists():
@@ -775,6 +790,7 @@ def ironbank_gen(
         where conda-lock is run it will use that file.
         see (https://github.com/conda-incubator/conda-lock).
     """
+    _validate_solver(solver)
     package_list = solve_environment(
         Path(file), solver, platform, virtual_package_spec
     )
@@ -799,7 +815,7 @@ def ironbank_gen(
     help="name of file to write.  Default is stdout.",
 )
 def virtual_packages(solver, output):
-
+    _validate_solver(solver)
     virtual_packages = _get_system_virtual_packages(solver)
 
     package_list = {}
