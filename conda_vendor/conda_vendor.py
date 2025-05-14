@@ -366,12 +366,25 @@ def _create_repodata_for_subdir(
         "packages.conda": {},
     }
 
+    """
+    Sometimes the "url" field in the repodata.json points to the conda-forge/linux-64
+    channel while the "channel" in the repodata.json points to conda-forge/noarch.
+    When this happens, the channel is corrected to point to conda-forge/linux-64.
+    Whodawhata???? 
+    """
+    linux_channel = 'https://conda.anaconda.org/conda-forge/linux-64'
+    noarch_channel = 'https://conda.anaconda.org/conda-forge/noarch'
+
+    for pkg in package_list:
+        if linux_channel in pkg['url'] and noarch_channel in pkg['channel']:
+            pkg['channel'] = linux_channel    
+
     channels = list(set((pkg["channel"] for pkg in package_list)))
     for chan in channels:
         channel_packages = [
             pkg for pkg in package_list if pkg["channel"] == chan
         ]
-
+        
         url = f"{chan}/repodata.json"
         _yellow(f"Downloading {url}")
 
@@ -444,7 +457,6 @@ def create_repodata_json(
             subdir,
             [pkg for pkg in package_list if pkg["subdir"] == subdir],
         )
-
         # write to destination
         dest_file = vendored_root / subdir / "repodata.json"
         with dest_file.open("w") as f:
@@ -483,15 +495,12 @@ def download_packages(package_list: List[FetchAction], vendored_root: Path):
                 _red(f"Download Failed for {pkg['url']}")
                 _red(f"server responded: {response.status_code}")
                 sys.exit(1)
-
             file_data = response.content
-
             # verify checksum
             sha256 = hashlib.sha256(file_data).hexdigest()
             if sha256 != pkg["sha256"]:
                 _red(f"SHA256 Checksum Validation Failed for {pkg['fn']}")
                 sys.exit(1)
-
             with open(dest_dir / pkg["fn"], "wb") as f:
                 f.write(file_data)
 
