@@ -371,7 +371,7 @@ def _create_repodata_for_subdir(
     channel while the "channel" in the repodata.json points to conda-forge/noarch.
     When this happens, the channel is corrected to point to conda-forge/linux-64.
     And Vice Versa, linux-64 channels are corrected to noarch when the url field is noarch.
-    Whodawhata???? 
+    Who Da What A???? wa Conda forever.
     """
     linux_channel = 'https://conda.anaconda.org/conda-forge/linux-64'
     noarch_channel = 'https://conda.anaconda.org/conda-forge/noarch'
